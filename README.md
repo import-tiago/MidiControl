@@ -3,7 +3,7 @@ MIDIControl is an external software (Windows Only), to remote control OBS, remot
 
 It support profiles/mapping, so you can switch from one to another, to use your MIDI Controller differently if you want to.
 
-![MIDIControl main interface](https://github.com/jboby93/MidiControl/blob/New-UI/doc/new-ui.png?raw=true)
+![MIDIControl main interface](https://github.com/import-tiago/MidiControl/blob/New-UI/doc/new-ui.png?raw=true)
 
 ## Prerequisites
 - obs-websocket-5.0. This is included with OBS Studio 28.  Older versions of OBS and obs-websocket are NOT supported.
