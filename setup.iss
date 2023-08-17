@@ -1,12 +1,8 @@
 #define AppName "MIDIControl"
 #define Dir "MidiControl\bin\Release\net472\"
-#define AppVersion GetVersionNumbersString(Dir + "MIDIControl.exe")
-
-#define UseWebView2
-#define UseDotNet47
-
-#include "InnoDependencyInstaller.iss"
-
+#define AppVersion() GetVersionComponents(Dir + "MIDIControl.exe", \
+    Local[0], Local[1], Local[2], Local[3]), \
+    Str(Local[0]) + "." + Str(Local[1]) + "." + Str(Local[2])
 
 [Setup]
 AppName={#AppName}
@@ -19,14 +15,14 @@ UninstallDisplayName={#AppName}
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin
-OutputBaseFilename={#AppName} {#AppVersion} Setup
+OutputBaseFilename={#AppName}_{#AppVersion}_Setup
 VersionInfoVersion={#AppVersion}
 
 [Files]
 Source: "{#Dir}MidiControl.exe"; DestDir: "{app}";
 Source: "{#Dir}*.dll"; DestDir: "{app}";
-Source: "{#Dir}runtimes\*"; DestDir: "{app}\runtimes";  Flags: recursesubdirs
 Source: "{#Dir}MidiControl.exe.config"; DestDir: "{app}";
+Source: "{#Dir}Resources\redirect.html"; DestDir: "{app}\Resources";
 Source: "3rd-party-licenses.txt"; DestDir: "{app}";
 Source: "LICENSE"; DestDir: "{app}";
 Source: "MIDIControl.VisualElementsManifest.xml"; DestDir: "{app}";

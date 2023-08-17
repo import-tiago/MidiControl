@@ -8,6 +8,8 @@ using System.Timers;
 using Microsoft.VisualBasic.FileIO;
 using System.Threading.Tasks;
 using System.IO;
+using Newtonsoft.Json;
+using MidiControl.Models.OBS;
 
 namespace MidiControl {
 	public class OBSControl : IExternalControl {
@@ -41,32 +43,32 @@ namespace MidiControl {
 
 			var pathFilters = Path.Combine(ConfFolder, Path.GetFileName("filterminmax.csv"));
 			try {
-				using(TextFieldParser csvParser = new TextFieldParser(pathFilters)) {
-					csvParser.CommentTokens = new string[] { "#" };
-					csvParser.SetDelimiters(new string[] { "," });
-					csvParser.HasFieldsEnclosedInQuotes = true;
+                using TextFieldParser csvParser = new TextFieldParser(pathFilters);
+                csvParser.CommentTokens = new string[] { "#" };
+                csvParser.SetDelimiters(new string[] { "," });
+                csvParser.HasFieldsEnclosedInQuotes = true;
 
-					while(!csvParser.EndOfData) {
-						var fields = csvParser.ReadFields();
-						FiltersMinMaxValues.Add(fields[0], new float[] { float.Parse(fields[1]), float.Parse(fields[2]) });
-					}
-				}
-			} catch(FileNotFoundException) {
+                while (!csvParser.EndOfData)
+                {
+                    var fields = csvParser.ReadFields();
+                    FiltersMinMaxValues.Add(fields[0], new float[] { float.Parse(fields[1]), float.Parse(fields[2]) });
+                }
+            } catch(FileNotFoundException) {
 			}
 
 			string pathHotkeys = Path.Combine(ConfFolder, Path.GetFileName("hotkeys.csv"));
 			try {
-				using(TextFieldParser csvParser = new TextFieldParser(pathHotkeys)) {
-					csvParser.CommentTokens = new string[] { "#" };
-					csvParser.SetDelimiters(new string[] { "," });
-					csvParser.HasFieldsEnclosedInQuotes = true;
+                using TextFieldParser csvParser = new TextFieldParser(pathHotkeys);
+                csvParser.CommentTokens = new string[] { "#" };
+                csvParser.SetDelimiters(new string[] { "," });
+                csvParser.HasFieldsEnclosedInQuotes = true;
 
-					while(!csvParser.EndOfData) {
-						string[] fields = csvParser.ReadFields();
-						Hotkeys.Add(fields[0], fields[1]);
-					}
-				}
-			} catch(FileNotFoundException) {
+                while (!csvParser.EndOfData)
+                {
+                    string[] fields = csvParser.ReadFields();
+                    Hotkeys.Add(fields[0], fields[1]);
+                }
+            } catch(FileNotFoundException) {
 			}
 
 			InitTimer();
@@ -93,7 +95,7 @@ namespace MidiControl {
 				Task.Run(() => {
 					try {
 						obs.ConnectAsync("ws://" + options.options.Ip, options.options.Password);
-					} catch(Exception e) {
+					} catch(Exception) {
 						gui.BeginInvoke((System.Windows.Forms.MethodInvoker)delegate {
 							// handle connection failed here
 							//System.Windows.Forms.MessageBox.Show()
@@ -356,10 +358,8 @@ namespace MidiControl {
 					if(filtersetting.Name == filter) {
 						var setting = obs.GetSourceFilter(scene, filter);
 						var currentVisibility = setting.IsEnabled;
-						var newsettings = setting;
-						newsettings.IsEnabled = !currentVisibility;
-						obs.SetSourceFilterSettings(scene, filter, newsettings);
-						if(currentVisibility == false) {
+                        obs.SetSourceFilterEnabled(scene, filter, !currentVisibility);
+                        if (currentVisibility == false) {
 							state = true;
 						}
 					}
@@ -371,9 +371,7 @@ namespace MidiControl {
 					if(filtersetting.Name == filter) {
 						var setting = obs.GetSourceFilter(source, filter);
 						var currentVisibility = setting.IsEnabled;
-						var newsettings = setting;
-						newsettings.IsEnabled = !currentVisibility;
-						obs.SetSourceFilterSettings(source, filter, newsettings);
+						obs.SetSourceFilterEnabled(source, filter, !currentVisibility);
 						if(currentVisibility == false) {
 							state = true;
 						}
@@ -392,9 +390,7 @@ namespace MidiControl {
 			foreach(string scene in this.GetScenes()) {
 				foreach(var filtersetting in obs.GetSourceFilterList(scene)) {
 					if(filtersetting.Name == filter) {
-						var setting = obs.GetSourceFilter(scene, filter);
-						setting.IsEnabled = show;
-						obs.SetSourceFilterSettings(scene, filter, setting);
+						obs.SetSourceFilterEnabled(scene, filter, show);
 					}
 				}
 			}
@@ -402,9 +398,7 @@ namespace MidiControl {
 			foreach(var source in this.GetSources()) {
 				foreach(var filtersetting in obs.GetSourceFilterList(source)) {
 					if(filtersetting.Name == filter) {
-						var setting = obs.GetSourceFilter(source, filter);
-						setting.IsEnabled = show;
-						obs.SetSourceFilterSettings(source, filter, setting);
+						obs.SetSourceFilterEnabled(source, filter, show);
 					}
 				}
 			}
@@ -417,13 +411,30 @@ namespace MidiControl {
 			var state = false;
 
 			foreach(SceneBasicInfo scene in scenes) {
-				foreach(var item in obs.GetSceneItemList(scene.Name)) {
+                foreach(var item in obs.GetSceneItemList(scene.Name)) {
 					if(sources.Contains(item.SourceName)) {
-						sourcesName.Add(new SourceScene() { Source = item.SourceName, Scene = scene.Name }, obs.GetSourceActive(item.SourceName).VideoShowing);
-					}
-				}
-			}
-			foreach(var entry in sourcesName) {
+                        sourcesName.Add(new SourceScene() { Source = item.SourceName, Scene = scene.Name }, obs.GetSourceActive(item.SourceName).VideoShowing);
+                    }
+                }
+            }
+			
+			// Groups
+            var groups = obs.GetGroupList();
+            foreach (var group in groups)
+            {
+                var request = new JObject
+				{
+					{ "sceneName", group}
+				};
+                var result = obs.SendRequest("GetGroupSceneItemList", request)["sceneItems"].ToString();
+                var groupElements = JsonConvert.DeserializeObject<List<Source>>(result);
+                foreach (var groupElement in groupElements.Where(element => sources.Contains(element.sourceName)))
+                {
+                    sourcesName.Add(new SourceScene() { Source = groupElement.sourceName, Scene = group }, obs.GetSourceActive(groupElement.sourceName).VideoShowing);
+                }
+            }
+
+            foreach(var entry in sourcesName) {
 				var sceneItemId = obs.GetSceneItemId(entry.Key.Scene, entry.Key.Source, 0);
 				obs.SetSceneItemEnabled(entry.Key.Scene, sceneItemId, !entry.Value);
 				if(entry.Value == false) {
@@ -465,7 +476,23 @@ namespace MidiControl {
 				}
 			}
 
-			foreach(SourceScene sourcescene in sourcesName) {
+            // Groups
+            var groups = obs.GetGroupList();
+            foreach (var group in groups)
+            {
+                var request = new JObject
+                {
+                    { "sceneName", group}
+                };
+                var result = obs.SendRequest("GetGroupSceneItemList", request)["sceneItems"].ToString();
+                var groupElements = JsonConvert.DeserializeObject<List<Source>>(result);
+                foreach (var groupElement in groupElements.Where(element => sources.Contains(element.sourceName)))
+                {
+                    sourcesName.Add(new SourceScene() { Source = groupElement.sourceName, Scene = group });
+                }
+            }
+
+            foreach (var sourcescene in sourcesName) {
 				var sceneItemId = obs.GetSceneItemId(sourcescene.Scene, sourcescene.Source, 0);
 				obs.SetSceneItemEnabled(sourcescene.Scene, sceneItemId, show);
 			}
@@ -499,10 +526,9 @@ namespace MidiControl {
 						obs.SetSourceFilterSettings(filterSetting.Scene, filterName, o);
 					}
 				} else if(filterSetting.FilterSettings.Name == filterName) {
-					using(StreamWriter w = File.AppendText(FilterLog)) {
-						w.WriteLine(filterSetting.FilterSettings.Name + " is missing. Add a new line in filterminmax.csv (replace MinValue and MaxValue)'" + filterSetting.FilterSettings.Kind + "." + property + ",MinValue,MaxValue'");
-					}
-				}
+                    using StreamWriter w = File.AppendText(FilterLog);
+                    w.WriteLine(filterSetting.FilterSettings.Name + " is missing. Add a new line in filterminmax.csv (replace MinValue and MaxValue)'" + filterSetting.FilterSettings.Kind + "." + property + ",MinValue,MaxValue'");
+                }
 			}
 		}
 		public List<string> GetFilterProperties(string filterName) {
@@ -589,7 +615,22 @@ namespace MidiControl {
 				}
 			}
 
-			sourceString.Sort((x, y) => string.Compare(x, y));
+            var groups = obs.GetGroupList();
+			foreach(var group in groups)
+			{
+                var request = new JObject
+				{
+					{ "sceneName", group}
+				};
+                var result = obs.SendRequest("GetGroupSceneItemList", request)["sceneItems"].ToString();
+                var groupElements = JsonConvert.DeserializeObject<List<Source>>(result);
+                foreach (var groupElement in groupElements)
+				{
+                    sourceString.Add(groupElement.sourceName);
+                }
+            }
+
+            sourceString.Sort((x, y) => string.Compare(x, y));
 			return sourceString.Distinct().ToList();
 		}
 		public List<string> GetTransitions() {

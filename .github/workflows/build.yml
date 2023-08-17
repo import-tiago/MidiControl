@@ -1,0 +1,72 @@
+name: Build on PR Creation
+
+on:
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on:
+      windows-latest
+
+    env:
+      Solution_Name: MidiControl.sln
+
+    steps:
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: csharp
+    
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v1.1
+        with:
+          msbuild-architecture: x64
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v1
+
+      - name: Restore NuGet Packages
+        run: nuget restore $env:Solution_Name
+
+      - name: Set Variable
+        id: vars
+        run: |
+          VERSION=v0.0.1
+          echo "version=${VERSION:1}" >> $GITHUB_OUTPUT
+          echo "file=MIDIControl_${VERSION:1}_Setup.exe" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Replace Secrets
+        run: |
+          sed -i "s/TWITCH_CLIENTSECRET/${{secrets.TWITCH_CLIENTSECRET}}/g" "MidiControl/App.config" &&
+          sed -i "s/TWITCH_CLIENTID/${{secrets.TWITCH_CLIENTID}}/g" "MidiControl/App.config"
+        shell: bash
+      
+      - name: Replace Version
+        id: code_version
+        run: |
+          sed -i "s/VERSION/${{ steps.vars.outputs.version }}/g" "MidiControl/Properties/AssemblyInfo.cs"
+        shell: bash
+
+      - name: Resource generation
+        run: |
+          Set-Location -Path "C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\"
+          .\ResGen.exe "D:\a\MidiControl\MidiControl\MidiControl\Properties\Resources.resx" /useSourcePath /str:csharp,MidiControl.Properties
+        shell: powershell
+        
+      - name: Build app for Release
+        run: msbuild $env:Solution_Name -t:rebuild -verbosity:diag -property:Configuration=Release
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+
+      - name: Building the installer
+        run: |
+          "%programfiles(x86)%\Inno Setup 6\iscc.exe" "setup.iss"
+        shell: cmd
